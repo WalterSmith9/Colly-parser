@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt" //formatted I/O
-	"log"
-	"os"
+	"fmt"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly" //scraping framework
 )
 
@@ -19,15 +16,15 @@ func main() {
 	})
 
 	//getting description
-	c.OnHTML("div.mm4_27", func(h *colly.HTMLElement) {
-		name := h.ChildText("h1.mm3_27.tsHeadline550Medium")
+	c.OnHTML("div.m7m_27", func(h *colly.HTMLElement) {
+		name := h.ChildText("a.mm8_27")
 		fmt.Println("Name: ", name)
 	})
 
 	//getting bread crumbs (path)
-	c.OnHTML("ol.fe4_10", func(h *colly.HTMLElement) {
+	c.OnHTML("ol.eg_10", func(h *colly.HTMLElement) {
 		var breadCrumbs string
-		h.ForEach(".ah6.fe5_10", func(i int, h *colly.HTMLElement) {
+		h.ForEach(".ah6.ge0_10", func(i int, h *colly.HTMLElement) {
 			breadCrumbs += h.ChildText("span")
 			breadCrumbs += "--"
 		})
@@ -36,44 +33,41 @@ func main() {
 	})
 
 	//getting characteristics
-	c.OnHTML("div[class=mm4_27]", func(h *colly.HTMLElement) {
-		e, err := h.DOM.Html()
-		if err != nil {
-			log.Println(err)
-		}
-		fmt.Println(e)
-
-		h.ForEach("dl.p0k_27", func(i int, h *colly.HTMLElement) {
-			key := h.ChildText("span.k0p_27")
+	c.OnHTML("div.d3.c5", func(h *colly.HTMLElement) {
+		h.ForEach(".p0k_27", func(i int, h *colly.HTMLElement) {
+			key := h.ChildText("dt.pk_27")
 			val := h.ChildText("dd.kp0_27")
-			fmt.Printf("%s - %s/n", key, val)
+			fmt.Printf("%s - %s\n", key, val)
 		})
 
 	})
 
 	//testing: writing a DOM into .html file
-	file, err := os.Create("pages/phone.html")
-	if err != nil {
-		fmt.Println("Unable to create file:", err)
-		os.Exit(1)
-	}
-	defer file.Close()
+	// file, err := os.Create("pages/phone-char.html")
+	// if err != nil {
+	// 	fmt.Println("Unable to create file:", err)
+	// 	os.Exit(1)
+	// }
+	// defer file.Close()
 
-	c.OnHTML("html", func(h *colly.HTMLElement) {
-		h.DOM.Each(func(i int, s *goquery.Selection) {
-			e, err := s.Html()
-			if err != nil {
-				log.Println(err)
-			}
-			file.WriteString(e)
-			//fmt.Println(e)
-		})
+	// c.OnHTML("html", func(h *colly.HTMLElement) {
+	// 	h.DOM.Each(func(i int, s *goquery.Selection) {
+	// 		e, err := s.Html()
+	// 		if err != nil {
+	// 			log.Println(err)
+	// 		}
+	// 		file.WriteString("<html>")
+	// 		file.WriteString(e)
+	// 		file.WriteString("</html>")
+	// 		//fmt.Println(e)
+	// 	})
 
-	})
+	// })
 
 	//setting url for parsing
-	productId := "1421094387"
-	baseAddr := "https://www.ozon.ru/product/"
-	addr := baseAddr + productId
+	productId := "1467382973"
+	addr := fmt.Sprintf("https://www.ozon.ru/product/%s/features/", productId)
+	//addr := baseAddr + productId
+
 	c.Visit(addr)
 }
