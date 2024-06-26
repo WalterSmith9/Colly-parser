@@ -2,23 +2,63 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
 
 	"github.com/gocolly/colly" //scraping framework
 )
 
-func main() {
+type product struct {
+	id                 string
+	name               string
+	breadCrumbs        string
+	webCharacteristics map[string]string
+}
 
+func (p product) print() {
+	fmt.Printf("%s;\"%s\";\"%s\"\n", p.id, "Название товара", p.name)
+	fmt.Printf("%s;\"%s\";\"%s\"\n", p.id, "Хлебные крошки", p.breadCrumbs)
+	for k, v := range p.webCharacteristics {
+		fmt.Printf("%s;\"%s\";\"%s\"\n", p.id, k, v)
+	}
+}
+
+func (p product) Write(src string) {
+	file, err := os.Create(src)
+	if err != nil {
+		fmt.Println("Unable to create file:", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	outputText := fmt.Sprintf("%s;\"%s\";\"%s\"\n", p.id, "Название товара", p.name)
+	outputText += fmt.Sprintf("%s;\"%s\";\"%s\"\n", p.id, "Хлебные крошки", p.breadCrumbs)
+	for k, v := range p.webCharacteristics {
+		outputText += fmt.Sprintf("%s;\"%s\";\"%s\"\n", p.id, k, v)
+	}
+
+	file.WriteString(outputText)
+
+}
+
+func parseItem(id string) product {
+	//creating entity for specific item
+	item := &product{}
+	item.id = id
+	item.webCharacteristics = make(map[string]string)
+
+	//creating parsing entity for specific item
 	c := colly.NewCollector(colly.AllowedDomains("www.ozon.ru"))
 
 	c.OnRequest(func(r *colly.Request) {
 		fmt.Println("Link of the page:", r.URL)
+		//fmt.Println(r.Headers)
 	})
 
 	//getting description
 	c.OnHTML("div.m7m_27", func(h *colly.HTMLElement) {
-		name := h.ChildText("a.mm8_27")
-		fmt.Println("Name: ", name)
+		item.name = h.ChildText("a.mm8_27")
 	})
 
 	//getting bread crumbs (path)
@@ -28,8 +68,7 @@ func main() {
 			breadCrumbs += h.ChildText("span")
 			breadCrumbs += "--"
 		})
-		breadCrumbs = strings.Trim(breadCrumbs, "-")
-		fmt.Println(breadCrumbs)
+		item.breadCrumbs = strings.Trim(breadCrumbs, "-")
 	})
 
 	//getting characteristics
@@ -37,13 +76,36 @@ func main() {
 		h.ForEach(".p0k_27", func(i int, h *colly.HTMLElement) {
 			key := h.ChildText("dt.pk_27")
 			val := h.ChildText("dd.kp0_27")
-			fmt.Printf("%s - %s\n", key, val)
+			item.webCharacteristics[key] = val
 		})
 
 	})
 
+	//setting url for parsing
+	addr := fmt.Sprintf("https://www.ozon.ru/product/%s/features/", id)
+
+	err := c.Visit(addr)
+	if err != nil {
+		log.Println(err)
+	}
+
+	// item.print()
+
+	return *item
+}
+
+func main() {
+
+	productId := "1421094387"
+	parseItem(productId).Write("item-lists/output.txt")
+
+	// err := c.SetProxy("http://188.235.0.207:8181")
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+
 	//testing: writing a DOM into .html file
-	// file, err := os.Create("pages/phone-char.html")
+	// file, err := os.Create("pages/phone-proxy.html")
 	// if err != nil {
 	// 	fmt.Println("Unable to create file:", err)
 	// 	os.Exit(1)
@@ -64,10 +126,4 @@ func main() {
 
 	// })
 
-	//setting url for parsing
-	productId := "1467382973"
-	addr := fmt.Sprintf("https://www.ozon.ru/product/%s/features/", productId)
-	//addr := baseAddr + productId
-
-	c.Visit(addr)
 }
