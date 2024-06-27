@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gocolly/colly" //scraping framework
 )
@@ -16,7 +19,7 @@ type product struct {
 	webCharacteristics map[string]string
 }
 
-func (p product) print() {
+func (p product) Print() {
 	fmt.Printf("%s;\"%s\";\"%s\"\n", p.id, "Название товара", p.name)
 	fmt.Printf("%s;\"%s\";\"%s\"\n", p.id, "Хлебные крошки", p.breadCrumbs)
 	for k, v := range p.webCharacteristics {
@@ -25,9 +28,9 @@ func (p product) print() {
 }
 
 func (p product) Write(src string) {
-	file, err := os.Create(src)
+	file, err := os.OpenFile(src, os.O_APPEND, 0777)
 	if err != nil {
-		fmt.Println("Unable to create file:", err)
+		fmt.Println("Unable to open file:", err)
 		os.Exit(1)
 	}
 	defer file.Close()
@@ -39,10 +42,22 @@ func (p product) Write(src string) {
 	}
 
 	file.WriteString(outputText)
-
 }
 
-func parseItem(id string) product {
+func (p product) NotFoundWrite(src string) {
+	file, err := os.OpenFile(src, os.O_APPEND, 0777)
+	if err != nil {
+		fmt.Println("Unable to open file:", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	outputText := p.id + "\n"
+
+	file.WriteString(outputText)
+}
+
+func parseItem(id string, tokens chan struct{}) (product, error) {
 	//creating entity for specific item
 	item := &product{}
 	item.id = id
@@ -84,46 +99,87 @@ func parseItem(id string) product {
 	//setting url for parsing
 	addr := fmt.Sprintf("https://www.ozon.ru/product/%s/features/", id)
 
+	tokens <- struct{}{}
 	err := c.Visit(addr)
+	<-tokens
 	if err != nil {
-		log.Println(err)
+		return *item, err
+
+	}
+
+	//check if exists
+	if item.name == "" {
+		err := errors.New("no name")
+		return *item, err
 	}
 
 	// item.print()
 
-	return *item
+	return *item, nil
+}
+
+func getIdList(src string) []string {
+	list := make([]string, 0, 10)
+
+	file, err := os.Open(src)
+	if err != nil {
+		fmt.Println("Unable to open file:", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+	//reading from file
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		list = append(list, scanner.Text())
+	}
+
+	return list
 }
 
 func main() {
 
-	productId := "1421094387"
-	parseItem(productId).Write("item-lists/output.txt")
+	if err := os.Truncate("item-lists/not_found.txt", 0); err != nil {
+		log.Printf("Failed to truncate: %v", err)
+	}
 
-	// err := c.SetProxy("http://188.235.0.207:8181")
-	// if err != nil {
-	// 	log.Println(err)
-	// }
+	if err := os.Truncate("item-lists/output.txt", 0); err != nil {
+		log.Printf("Failed to truncate: %v", err)
+	}
 
-	//testing: writing a DOM into .html file
-	// file, err := os.Create("pages/phone-proxy.html")
-	// if err != nil {
-	// 	fmt.Println("Unable to create file:", err)
-	// 	os.Exit(1)
-	// }
-	// defer file.Close()
+	productIdList := getIdList("item-lists/input.txt")
 
-	// c.OnHTML("html", func(h *colly.HTMLElement) {
-	// 	h.DOM.Each(func(i int, s *goquery.Selection) {
-	// 		e, err := s.Html()
-	// 		if err != nil {
-	// 			log.Println(err)
-	// 		}
-	// 		file.WriteString("<html>")
-	// 		file.WriteString(e)
-	// 		file.WriteString("</html>")
-	// 		//fmt.Println(e)
-	// 	})
+	wg := new(sync.WaitGroup)
+	tokens := make(chan struct{}, 100)
 
-	// })
+	muNotFound := new(sync.Mutex)
+	muOutput := new(sync.Mutex)
+
+	for _, v := range productIdList {
+		wg.Add(1)
+
+		go func(v string) {
+			item, err := parseItem(v, tokens)
+			if err != nil {
+
+				log.Println(item.id, err)
+				muNotFound.Lock()
+				item.NotFoundWrite("item-lists/not_found.txt")
+				muNotFound.Unlock()
+
+			} else {
+
+				muOutput.Lock()
+				item.Write("item-lists/output.txt")
+				muOutput.Unlock()
+
+			}
+			wg.Done()
+
+		}(v)
+	}
+
+	wg.Wait()
 
 }
